@@ -428,10 +428,8 @@ def main():
                 # update k0 (random subsampling budget)
                 if decrease_budget:
                     args.k = max([args.k * (1.0-args.dk), args.mk])
-                    # args.select_ratio = min(max(args.select_ratio_rate, 1.1) * args.select_ratio, 0.8)
                 else:
                     args.k = min([args.k * (1.0+args.dk), args.mk])
-                    # args.select_ratio = max(min(args.select_ratio_rate, 0.9) * args.select_ratio, 0.4)
                 k0 = int(np.floor(args.k * n_train))
                 args.select_ratio = min(args.select_ratio_rate * args.select_ratio, 1.0)
 
@@ -449,8 +447,6 @@ def main():
                 else:
                     args.mod *= max(1.2, args.mod_rate)
                     args.alpha = max(0.2, args.alpha * min(0.9, args.alpha_rate))
-                # args.mod *= max(1.1, args.mod_rate)
-                # args.tmpt = max(1., args.tmpt_rate * args.tmpt)
 
                 # update the size of selected subset and the number of training batches in the current episode
                 batches_this_episode = batches_per_epoch * (args.schedule[schedule_idx+1] - args.schedule[schedule_idx]) + np.ceil(float(n_train) / float(args.train_batch))
@@ -555,15 +551,11 @@ def main():
             print('\nEpoch: [%d | %d] LR: %f, sampled, subset: %d, %d' % (epoch + 1, args.epochs, state['lr'], k0, subset_size))
 
             # compute sampling probability
-            # rand_prob = (acc_score - acc_score.mean()) / acc_score.std()
-            # rand_prob -= rand_prob.min()
             rand_prob = acc_score - acc_score.min()
             rand_prob = rand_prob.cpu().numpy().astype(float)
             rand_prob = np.exp(args.tmpt * (rand_prob - np.max(rand_prob)))
             rand_prob /= np.sum(rand_prob)
             print('rand_prob max, min: ', rand_prob.max(), rand_prob.min())
-            # if args.bandits_alg == 'EXP3':
-            #     rand_prob = 0.95 * rand_prob + 0.05 / float(len(rand_prob))
 
             # sampling a subset according to rand_prob
             if args.use_centrality:
