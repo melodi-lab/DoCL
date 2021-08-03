@@ -386,7 +386,7 @@ def main():
     train_sample_num = 0
     batches_counter = 0
     rand_train_set_old = None
-    batches_this_episode = np.ceil(float(n_train) / float(args.train_batch)) * (args.schedule[schedule_idx+1] - args.schedule[schedule_idx] + 1)
+    batches_this_episode = np.ceil(float(n_train) / float(args.train_batch)) * (args.schedule[schedule_idx+1] - args.schedule[schedule_idx])
     epoch_time = np.zeros(args.epochs)
     decrease_budget = True if args.k > args.mk else False
     all_pace = np.zeros(n_train)
@@ -428,8 +428,10 @@ def main():
                 # update k0 (random subsampling budget)
                 if decrease_budget:
                     args.k = max([args.k * (1.0-args.dk), args.mk])
+                    # args.select_ratio = min(max(args.select_ratio_rate, 1.1) * args.select_ratio, 0.8)
                 else:
                     args.k = min([args.k * (1.0+args.dk), args.mk])
+                    # args.select_ratio = max(min(args.select_ratio_rate, 0.9) * args.select_ratio, 0.4)
                 k0 = int(np.floor(args.k * n_train))
                 args.select_ratio = min(args.select_ratio_rate * args.select_ratio, 1.0)
 
@@ -447,6 +449,8 @@ def main():
                 else:
                     args.mod *= max(1.2, args.mod_rate)
                     args.alpha = max(0.2, args.alpha * min(0.9, args.alpha_rate))
+                # args.mod *= max(1.1, args.mod_rate)
+                # args.tmpt = max(1., args.tmpt_rate * args.tmpt)
 
                 # update the size of selected subset and the number of training batches in the current episode
                 batches_this_episode = batches_per_epoch * (args.schedule[schedule_idx+1] - args.schedule[schedule_idx]) + np.ceil(float(n_train) / float(args.train_batch))
@@ -510,8 +514,8 @@ def main():
                 train_loss, train_acc, all_loss_per_sample, all_correct_per_sample, all_pred_per_sample, all_prob_per_sample, all_logit_per_sample, batches_counter, pace_delta = train(trainloader, model, ema_model, criterion, optimizer, batches_counter, batches_this_episode, use_cuda, args.ema_decay, 0., 0., args.alpha, lr_schedule = 'cosine')
 
             all_pace += pace_delta
-            all_prob_per_sample[indices] = all_prob_per_sample
-            all_logit_per_sample[indices] = all_logit_per_sample
+            all_prob_per_sample[indices] = all_prob_per_sample.clone()
+            all_logit_per_sample[indices] = all_logit_per_sample.clone()
             if epoch > 0:
 
                 # time difference of logits
@@ -551,11 +555,15 @@ def main():
             print('\nEpoch: [%d | %d] LR: %f, sampled, subset: %d, %d' % (epoch + 1, args.epochs, state['lr'], k0, subset_size))
 
             # compute sampling probability
+            # rand_prob = (acc_score - acc_score.mean()) / acc_score.std()
+            # rand_prob -= rand_prob.min()
             rand_prob = acc_score - acc_score.min()
             rand_prob = rand_prob.cpu().numpy().astype(float)
             rand_prob = np.exp(args.tmpt * (rand_prob - np.max(rand_prob)))
             rand_prob /= np.sum(rand_prob)
             print('rand_prob max, min: ', rand_prob.max(), rand_prob.min())
+            # if args.bandits_alg == 'EXP3':
+            #     rand_prob = 0.95 * rand_prob + 0.05 / float(len(rand_prob))
 
             # sampling a subset according to rand_prob
             if args.use_centrality:
@@ -965,7 +973,7 @@ class WideResNet(nn.Module):
         # compute conv feature size
         with torch.no_grad():
             self.feature_size = self._forward_conv(
-                torch.zeros(*input_shape)).view(-1).shape[0]
+                torch.zeros(*input_shape)).reshape(-1).shape[0]
 
         self.fc = nn.Linear(self.feature_size, num_classes, bias = bias)
         self.nChannels = nChannels[-1]
@@ -1599,7 +1607,7 @@ def accuracy(output, target, topk=(1,)):
 
     res = []
     for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0)
+        correct_k = correct[:k].reshape(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
 
     if len(res) == 1:
